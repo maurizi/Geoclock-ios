@@ -1,6 +1,6 @@
-import SwiftUI
 import Combine
 import MapKit
+import SwiftUI
 
 struct LocationPickerView: View {
     @Environment(\.dismiss) private var dismiss
@@ -128,10 +128,12 @@ struct LocationPickerView: View {
                 Spacer()
                 if !place.isEmpty {
                     Text(place)
-                        .font(.caption)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                 }
                 Spacer()
             }
@@ -146,11 +148,12 @@ struct LocationPickerView: View {
             Spacer()
             VStack(spacing: 4) {
                 Text(GeoAlarm.radiusSizeLabel(for: radius))
-                    .font(.caption)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                     .foregroundStyle(.secondary)
                 HStack {
                     Text("Small")
-                        .font(.caption2)
+                        .font(.caption)
                     Slider(
                         value: Binding(
                             get: { Double(radius) },
@@ -160,11 +163,12 @@ struct LocationPickerView: View {
                         step: 50
                     )
                     Text("Large")
-                        .font(.caption2)
+                        .font(.caption)
                 }
             }
             .padding()
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
             .padding()
         }
     }
@@ -175,8 +179,8 @@ struct LocationPickerView: View {
         let request = MKLocalSearch.Request(completion: completion)
         let search = MKLocalSearch(request: request)
         search.start { response, _ in
-            guard let item = response?.mapItems.first,
-                  let location = item.placemark.location else { return }
+            guard let item = response?.mapItems.first else { return }
+            let location = item.location
             latitude = location.coordinate.latitude
             longitude = location.coordinate.longitude
             place = item.name ?? completion.title
@@ -204,12 +208,11 @@ struct LocationPickerView: View {
     }
 
     private func reverseGeocodePin() {
-        let geocoder = CLGeocoder()
         let location = CLLocation(latitude: latitude, longitude: longitude)
-        geocoder.reverseGeocodeLocation(location) { placemarks, _ in
-            if let placemark = placemarks?.first {
-                place = AddressFormatter.shortAddress(from: placemark) ?? ""
-            }
+        Task {
+            guard let request = MKReverseGeocodingRequest(location: location),
+                  let item = (try? await request.mapItems)?.first else { return }
+            place = AddressFormatter.shortAddress(from: item) ?? ""
         }
     }
 }

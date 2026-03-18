@@ -1,5 +1,7 @@
-import SwiftUI
+import CoreLocation
+import MapKit
 import SwiftData
+import SwiftUI
 
 struct AlarmEditSheet: View {
     @Environment(\.modelContext) private var modelContext
@@ -174,30 +176,28 @@ struct AlarmEditSheet: View {
     private func deleteAlarm() {
         if let alarm {
             geofenceManager.removeGeofence(for: alarm)
+            alarmScheduler.cancelAlarm(for: alarm)
+            NotificationManager.shared.cancelUpcomingNotification(for: alarm)
             modelContext.delete(alarm)
         }
         dismiss()
     }
 
     private func reverseGeocode(_ alarm: GeoAlarm) {
-        let geocoder = CLGeocoder()
         let location = CLLocation(latitude: alarm.latitude, longitude: alarm.longitude)
-        geocoder.reverseGeocodeLocation(location) { placemarks, _ in
-            if let placemark = placemarks?.first {
-                alarm.place = AddressFormatter.shortAddress(from: placemark)
-            }
+        Task {
+            guard let request = MKReverseGeocodingRequest(location: location),
+                  let item = (try? await request.mapItems)?.first else { return }
+            alarm.place = AddressFormatter.shortAddress(from: item)
         }
     }
 
     private func reverseGeocodeCoordinates() {
-        let geocoder = CLGeocoder()
         let location = CLLocation(latitude: latitude, longitude: longitude)
-        geocoder.reverseGeocodeLocation(location) { placemarks, _ in
-            if let placemark = placemarks?.first {
-                place = AddressFormatter.shortAddress(from: placemark) ?? ""
-            }
+        Task {
+            guard let request = MKReverseGeocodingRequest(location: location),
+                  let item = (try? await request.mapItems)?.first else { return }
+            place = AddressFormatter.shortAddress(from: item) ?? ""
         }
     }
 }
-
-import CoreLocation

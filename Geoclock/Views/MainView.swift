@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import MapKit
+import SwiftData
+import SwiftUI
 
 struct MainView: View {
     @Environment(\.modelContext) private var modelContext
@@ -8,11 +8,10 @@ struct MainView: View {
     @EnvironmentObject private var geofenceManager: GeofenceManager
     @EnvironmentObject private var alarmScheduler: AlarmScheduler
 
-    @State private var mapExpanded = false
     @State private var selectedAlarm: GeoAlarm?
     @State private var showingAddSheet = false
-    @State private var mapCameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var alarmToDelete: GeoAlarm?
+    @State private var mapCameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var showingPermissionAlert = false
 
     private var alarmsInRange: [GeoAlarm] {
@@ -58,7 +57,11 @@ struct MainView: View {
             Text("This alarm will be permanently removed.")
         }
         .onAppear {
-            geofenceManager.configure(modelContext: modelContext, alarmScheduler: alarmScheduler)
+            geofenceManager.configure(
+                modelContext: modelContext,
+                alarmScheduler: alarmScheduler,
+                notificationManager: NotificationManager.shared
+            )
             geofenceManager.requestWhenInUseAuthorization()
             geofenceManager.requestLocation()
             geofenceManager.reregisterGeofences()
@@ -83,8 +86,35 @@ struct MainView: View {
 
     // MARK: - Map
 
+    private var fittedMapPosition: MapCameraPosition {
+        var coordinates: [CLLocationCoordinate2D] = alarms.map(\.coordinate)
+        if let userLoc = geofenceManager.userLocation {
+            coordinates.append(userLoc)
+        }
+
+        guard !coordinates.isEmpty else {
+            return .userLocation(fallback: .automatic)
+        }
+
+        let lats = coordinates.map(\.latitude)
+        let lons = coordinates.map(\.longitude)
+        let centerLat = (lats.min()! + lats.max()!) / 2
+        let centerLon = (lons.min()! + lons.max()!) / 2
+
+        let maxRadius = alarms.map(\.radius).max() ?? 0
+        let radiusPadding = Double(maxRadius) / 111_000
+
+        let latSpan = max((lats.max()! - lats.min()!) * 1.5 + radiusPadding, 0.01)
+        let lonSpan = max((lons.max()! - lons.min()!) * 1.5 + radiusPadding, 0.01)
+
+        return .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+            span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lonSpan)
+        ))
+    }
+
     private var mapSection: some View {
-        Map(position: $mapCameraPosition) {
+        Map(position: $mapCameraPosition, interactionModes: []) {
             UserAnnotation()
 
             ForEach(alarms, id: \.id) { alarm in
@@ -99,12 +129,16 @@ struct MainView: View {
                 }
             }
         }
-        .mapControls {
-            MapUserLocationButton()
-            MapCompass()
+        .frame(height: 120)
+        .onChange(of: alarms.map(\.id)) { _, _ in
+            mapCameraPosition = fittedMapPosition
         }
-        .frame(height: mapExpanded ? 250 : 120)
-        .animation(.easeInOut(duration: 0.3), value: mapExpanded)
+        .onChange(of: geofenceManager.userLocation?.latitude) { _, _ in
+            mapCameraPosition = fittedMapPosition
+        }
+        .onAppear {
+            mapCameraPosition = fittedMapPosition
+        }
     }
 
     // MARK: - Alarm list
@@ -154,6 +188,7 @@ struct MainView: View {
         case .denied, .restricted:
             return "Geoclock needs location access to know when you're near your alarm locations."
         case .authorizedWhenInUse:
+            // swiftlint:disable:next line_length
             return "Geoclock needs to check your location in the background to trigger alarms when you arrive at a place. Please change location access to \"Always\" in Settings."
         default:
             return ""
@@ -177,8 +212,9 @@ struct MainView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             selectedAlarm = alarm
-            mapExpanded = true
         }
+        .accessibilityIdentifier("alarm-row")
+        .accessibilityAddTraits(.isButton)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 alarmToDelete = alarm
@@ -210,7 +246,6 @@ struct MainView: View {
     private var addButton: some View {
         Button {
             showingAddSheet = true
-            mapExpanded = true
         } label: {
             Image(systemName: "plus")
                 .font(.title2)
@@ -243,6 +278,7 @@ struct MainView: View {
     private func deleteAlarm(_ alarm: GeoAlarm) {
         geofenceManager.removeGeofence(for: alarm)
         alarmScheduler.cancelAlarm(for: alarm)
+        NotificationManager.shared.cancelUpcomingNotification(for: alarm)
         modelContext.delete(alarm)
     }
 }
