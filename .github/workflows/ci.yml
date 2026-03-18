@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        device:
+          - "iPhone 17 Pro"
+          - "iPad Air 13-inch (M3)"
+    name: ${{ matrix.device }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+
+      - name: Ensure simulator exists
+        run: |
+          if ! xcrun simctl list devices | grep -q "${{ matrix.device }}"; then
+            RUNTIME=$(xcrun simctl list runtimes | grep "iOS 26" | tail -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[^ ]+')
+            echo "Creating simulator '${{ matrix.device }}' with runtime $RUNTIME"
+            xcrun simctl create "${{ matrix.device }}" "${{ matrix.device }}" "$RUNTIME"
+          else
+            echo "Simulator '${{ matrix.device }}' already exists"
+          fi
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-${{ runner.os }}-${{ hashFiles('Geoclock.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: SwiftLint
+        run: swiftlint lint --strict
+
+      - name: Build
+        run: >
+          xcodebuild -scheme Geoclock
+          -destination 'platform=iOS Simulator,name=${{ matrix.device }}'
+          OTHER_SWIFT_FLAGS="-warnings-as-errors"
+          build
+
+      - name: Boot simulator
+        run: xcrun simctl boot "${{ matrix.device }}" || true
+
+      - name: Grant location permission
+        run: xcrun simctl privacy booted grant location-always maurizi.Geoclock
+
+      - name: Unit tests
+        run: >
+          xcodebuild -scheme Geoclock
+          -destination 'platform=iOS Simulator,name=${{ matrix.device }}'
+          -only-testing:GeoclockTests
+          test
+
+      - name: Re-boot simulator for UI tests
+        run: |
+          xcrun simctl shutdown "${{ matrix.device }}" || true
+          xcrun simctl boot "${{ matrix.device }}"
+          xcrun simctl bootstatus "${{ matrix.device }}" -b
+
+      - name: Grant location permission (post-reboot)
+        run: xcrun simctl privacy booted grant location-always maurizi.Geoclock
+
+      - name: Start location simulation
+        run: |
+          nohup xcrun simctl location "${{ matrix.device }}" start --interval=1 40.7580,-73.9855 40.7580,-73.9855 > /tmp/simctl-location.log 2>&1 &
+          sleep 3
+          echo "Location simulation log:"; cat /tmp/simctl-location.log
+
+      - name: UI tests
+        run: >
+          xcodebuild -scheme Geoclock
+          -destination 'platform=iOS Simulator,name=${{ matrix.device }}'
+          -only-testing:GeoclockUITests/GeoclockUITests
+          -parallel-testing-enabled NO
+          test
