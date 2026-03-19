@@ -49,8 +49,14 @@ jobs:
       - name: Package test bundle
         run: |
           cd build/Build/Products
-          ls -la *.xctestrun Debug-iphoneos/
+          echo "=== xctestrun files ==="
+          ls -la *.xctestrun
+          echo "=== Debug-iphoneos contents ==="
+          ls -la Debug-iphoneos/
+          echo "=== Zipping ==="
           zip -r "$GITHUB_WORKSPACE/tests.zip" *.xctestrun Debug-iphoneos/
+          echo "=== Zip contents (first 30 entries) ==="
+          zipinfo "$GITHUB_WORKSPACE/tests.zip" | head -30
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -93,11 +99,17 @@ jobs:
           curl -T tests.zip "$UPLOAD_URL"
 
           # Wait for upload to succeed
+          UPLOAD_ARN=$(echo "$UPLOAD" | jq -r '.upload.arn')
           for i in $(seq 1 30); do
-            STATUS=$(aws devicefarm get-upload --arn "$(echo "$UPLOAD" | jq -r '.upload.arn')" --query 'upload.status' --output text)
+            UPLOAD_STATUS=$(aws devicefarm get-upload --arn "$UPLOAD_ARN" --output json)
+            STATUS=$(echo "$UPLOAD_STATUS" | jq -r '.upload.status')
             echo "Test upload status: $STATUS"
             if [ "$STATUS" = "SUCCEEDED" ]; then break; fi
-            if [ "$STATUS" = "FAILED" ]; then echo "Upload failed"; exit 1; fi
+            if [ "$STATUS" = "FAILED" ]; then
+              echo "Upload failed. Details:"
+              echo "$UPLOAD_STATUS" | jq '.upload | {status, message, metadata}'
+              exit 1
+            fi
             sleep 5
           done
 
