@@ -48,15 +48,13 @@ jobs:
 
       - name: Package test bundle
         run: |
-          cd build/Build/Products
-          echo "=== xctestrun files ==="
-          ls -la *.xctestrun
-          echo "=== Debug-iphoneos contents ==="
-          ls -la Debug-iphoneos/
-          echo "=== Zipping ==="
-          zip -r "$GITHUB_WORKSPACE/tests.zip" *.xctestrun Debug-iphoneos/
-          echo "=== Zip contents (first 30 entries) ==="
-          zipinfo "$GITHUB_WORKSPACE/tests.zip" | head -30
+          XCTEST_PATH=$(find build -name "GeoclockTests.xctest" -type d | head -1)
+          echo "Found xctest bundle: $XCTEST_PATH"
+          cp -r "$XCTEST_PATH" GeoclockTests.xctest
+          zip -r tests.zip GeoclockTests.xctest
+          rm -rf GeoclockTests.xctest
+          echo "=== Zip contents ==="
+          zipinfo tests.zip | head -15
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
