@@ -35,16 +35,9 @@ class AlarmScheduler: ObservableObject, AlarmScheduling {
     func scheduleAlarm(for alarm: GeoAlarm) async throws {
         guard let nextFireDate = alarm.calculateNextAlarmTime() else { return }
 
-        let stopButton = AlarmButton(
-            text: "Stop",
-            textColor: .red,
-            systemImageName: "stop.fill"
-        )
-
         let presentation = AlarmPresentation(
             alert: AlarmPresentation.Alert(
-                title: LocalizedStringResource(stringLiteral: alarm.displayName),
-                stopButton: stopButton
+                title: LocalizedStringResource(stringLiteral: alarm.displayName)
             )
         )
 

@@ -226,15 +226,9 @@ struct GeoAlarmTests {
     func alarmKit_scheduleAndCancel() async throws {
         let alarmId = UUID()
 
-        let stopButton = AlarmButton(
-            text: "Stop",
-            textColor: .red,
-            systemImageName: "stop.fill"
-        )
         let presentation = AlarmPresentation(
             alert: AlarmPresentation.Alert(
-                title: "Test Alarm",
-                stopButton: stopButton
+                title: "Test Alarm"
             )
         )
         let metadata = GeoAlarmMetadata(placeName: "Test", alarmTime: "8:00 AM")

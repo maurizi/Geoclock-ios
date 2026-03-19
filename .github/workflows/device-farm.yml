@@ -89,7 +89,7 @@ jobs:
           UPLOAD=$(aws devicefarm create-upload \
             --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
             --name tests.ipa \
-            --type XCTEST \
+            --type XCTEST_TEST_PACKAGE \
             --output json)
           echo "upload_arn=$(echo "$UPLOAD" | jq -r '.upload.arn')" >> "$GITHUB_OUTPUT"
           UPLOAD_URL=$(echo "$UPLOAD" | jq -r '.upload.url')
