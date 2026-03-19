@@ -46,14 +46,11 @@ jobs:
           zip -r app.ipa Payload
           rm -rf Payload
 
-      - name: Package test runner .ipa
+      - name: Package test bundle
         run: |
-          RUNNER_PATH=$(find build -name "*Runner.app" -path "*/Debug-iphoneos/*" | head -1)
-          echo "Found runner: $RUNNER_PATH"
-          mkdir -p Payload
-          cp -r "$RUNNER_PATH" Payload/
-          zip -r tests.ipa Payload
-          rm -rf Payload
+          cd build/Build/Products
+          ls -la *.xctestrun Debug-iphoneos/
+          zip -r "$GITHUB_WORKSPACE/tests.zip" *.xctestrun Debug-iphoneos/
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -88,12 +85,12 @@ jobs:
         run: |
           UPLOAD=$(aws devicefarm create-upload \
             --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
-            --name tests.ipa \
+            --name tests.zip \
             --type XCTEST_TEST_PACKAGE \
             --output json)
           echo "upload_arn=$(echo "$UPLOAD" | jq -r '.upload.arn')" >> "$GITHUB_OUTPUT"
           UPLOAD_URL=$(echo "$UPLOAD" | jq -r '.upload.url')
-          curl -T tests.ipa "$UPLOAD_URL"
+          curl -T tests.zip "$UPLOAD_URL"
 
           # Wait for upload to succeed
           for i in $(seq 1 30); do
