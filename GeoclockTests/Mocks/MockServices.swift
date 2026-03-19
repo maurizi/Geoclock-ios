@@ -8,6 +8,7 @@ class MockAlarmScheduler: AlarmScheduling {
     var scheduledAlarmIDs: [UUID] = []
     var cancelledAlarmIDs: [UUID] = []
 
+    func configure(modelContainer: ModelContainer) {}
     func requestAuthorization() async {}
 
     func scheduleAlarm(for alarm: GeoAlarm) async throws {

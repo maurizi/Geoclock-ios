@@ -90,8 +90,9 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 Task {
                     do {
                         try await alarmScheduler?.scheduleAlarm(for: alarm)
+                        print("[Geoclock] Alarm scheduled via registerGeofence for '\(alarm.displayName)'")
                     } catch {
-                        print("Failed to schedule alarm in registerGeofence: \(error)")
+                        print("[Geoclock] ERROR scheduling alarm in registerGeofence: \(error)")
                     }
                 }
             }
@@ -152,8 +153,9 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     Task {
                         do {
                             try await alarmScheduler?.scheduleAlarm(for: alarm)
+                            print("[Geoclock] Alarm scheduled on enter for '\(alarm.displayName)'")
                         } catch {
-                            print("Failed to schedule alarm on enter: \(error)")
+                            print("[Geoclock] ERROR scheduling alarm on enter: \(error)")
                         }
                     }
                 } else if isNowInside && wasInside {
@@ -162,8 +164,9 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     Task {
                         do {
                             try await alarmScheduler?.scheduleAlarm(for: alarm)
+                            print("[Geoclock] Alarm scheduled on still-inside for '\(alarm.displayName)'")
                         } catch {
-                            print("Failed to schedule alarm on still-inside: \(error)")
+                            print("[Geoclock] ERROR scheduling alarm on still-inside: \(error)")
                         }
                     }
                 } else if !isNowInside && wasInside {
@@ -251,7 +254,12 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if alarm.enabled {
             notificationManager?.scheduleUpcomingNotification(for: alarm)
             Task {
-                try? await alarmScheduler.scheduleAlarm(for: alarm)
+                do {
+                    try await alarmScheduler.scheduleAlarm(for: alarm)
+                    print("[Geoclock] Alarm scheduled on didEnterRegion for '\(alarm.displayName)'")
+                } catch {
+                    print("[Geoclock] ERROR scheduling alarm on didEnterRegion: \(error)")
+                }
             }
         }
     }

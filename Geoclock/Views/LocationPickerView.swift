@@ -30,7 +30,7 @@ struct LocationPickerView: View {
                 pinOverlay
                 radiusControls
             }
-            .searchable(text: $searchText, prompt: "Search for a place")
+            .searchable(text: $searchText, isPresented: .constant(true), prompt: "Search for a place")
             .searchSuggestions {
                 ForEach(searchCompleter.results, id: \.self) { completion in
                     Button {

@@ -29,9 +29,22 @@
 		278C2C352F64CDAC00CDD8FB /* GeoclockUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GeoclockUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		278C2CFF2F64CDAA00CDD8FB /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 278C2C1B2F64CDAA00CDD8FB /* Geoclock */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		278C2C1E2F64CDAA00CDD8FB /* Geoclock */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				278C2CFF2F64CDAA00CDD8FB /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
 			path = Geoclock;
 			sourceTree = "<group>";
 		};
@@ -400,7 +413,7 @@
 				DEVELOPMENT_TEAM = 735RK29F5W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSAlarmKitUsageDescription = "Geoclock schedules alarms that fire when you arrive at a location";
+				INFOPLIST_FILE = Geoclock/Info.plist;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Geoclock monitors your location in the background to trigger alarms when you arrive";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Geoclock uses your location to show nearby alarms";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -436,7 +449,7 @@
 				DEVELOPMENT_TEAM = 735RK29F5W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSAlarmKitUsageDescription = "Geoclock schedules alarms that fire when you arrive at a location";
+				INFOPLIST_FILE = Geoclock/Info.plist;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Geoclock monitors your location in the background to trigger alarms when you arrive";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Geoclock uses your location to show nearby alarms";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

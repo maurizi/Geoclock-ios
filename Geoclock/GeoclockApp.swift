@@ -27,6 +27,7 @@ struct GeoclockApp: App {
                 .environmentObject(geofenceManager)
                 .environmentObject(alarmScheduler)
                 .task {
+                    alarmScheduler.configure(modelContainer: sharedModelContainer)
                     await alarmScheduler.requestAuthorization()
                     NotificationManager.shared.configure(
                         modelContainer: sharedModelContainer,
