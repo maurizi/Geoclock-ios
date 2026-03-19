@@ -1,6 +1,9 @@
+import ActivityKit
+import AlarmKit
 import CoreLocation
 import Foundation
 @testable import Geoclock
+import SwiftUI
 import Testing
 
 @MainActor
@@ -213,4 +216,54 @@ struct GeoAlarmTests {
         let distance = DistanceFormatter.distanceToEdge(from: far, to: alarm)
         #expect(distance > 0) // Outside → positive
     }
+
+    // MARK: - AlarmKit integration
+
+    // AlarmKit throws Code=1 on the simulator — these tests verify behavior on real devices only.
+
+    #if !targetEnvironment(simulator)
+    @Test
+    func alarmKit_scheduleAndCancel() async throws {
+        let alarmId = UUID()
+
+        let stopButton = AlarmButton(
+            text: "Stop",
+            textColor: .red,
+            systemImageName: "stop.fill"
+        )
+        let presentation = AlarmPresentation(
+            alert: AlarmPresentation.Alert(
+                title: "Test Alarm",
+                stopButton: stopButton
+            )
+        )
+        let metadata = GeoAlarmMetadata(placeName: "Test", alarmTime: "8:00 AM")
+        let attributes = AlarmAttributes<GeoAlarmMetadata>(
+            presentation: presentation,
+            metadata: metadata,
+            tintColor: .blue
+        )
+
+        // Schedule 1 hour from now
+        let futureTime = Calendar.current.dateComponents([.hour, .minute], from: Date.now.addingTimeInterval(3600))
+        let schedule = Alarm.Schedule.relative(.init(
+            time: .init(hour: futureTime.hour!, minute: futureTime.minute!),
+            repeats: .never
+        ))
+
+        let config = AlarmManager.AlarmConfiguration.alarm(
+            schedule: schedule,
+            attributes: attributes,
+            sound: .default
+        )
+
+        let alarm = try await AlarmManager.shared.schedule(id: alarmId, configuration: config)
+        #expect(alarm.state == .scheduled)
+
+        let alarms = try AlarmManager.shared.alarms
+        #expect(alarms.contains { $0.id == alarmId })
+
+        try AlarmManager.shared.cancel(id: alarmId)
+    }
+    #endif
 }
