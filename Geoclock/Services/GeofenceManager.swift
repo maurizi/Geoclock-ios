@@ -1,6 +1,6 @@
-import Foundation
 import Combine
 import CoreLocation
+import Foundation
 import SwiftData
 
 class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -9,7 +9,7 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
 
     private var modelContext: ModelContext?
-    private var alarmScheduler: AlarmScheduler?
+    private var alarmScheduler: (any AlarmScheduling)?
     private var pendingGeofenceAlarms: [GeoAlarm] = []
 
     var monitoredRegionCount: Int {
@@ -25,9 +25,16 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         authorizationStatus = locationManager.authorizationStatus
     }
 
-    func configure(modelContext: ModelContext, alarmScheduler: AlarmScheduler) {
+    private var notificationManager: (any NotificationScheduling)?
+
+    func configure(
+        modelContext: ModelContext,
+        alarmScheduler: any AlarmScheduling,
+        notificationManager: (any NotificationScheduling)? = nil
+    ) {
         self.modelContext = modelContext
         self.alarmScheduler = alarmScheduler
+        self.notificationManager = notificationManager
     }
 
     // MARK: - Authorization
@@ -79,6 +86,7 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             alarm.isInsideGeofence = distance <= Double(alarm.radius)
 
             if alarm.isInsideGeofence, alarm.enabled {
+                notificationManager?.scheduleUpcomingNotification(for: alarm)
                 Task {
                     do {
                         try await alarmScheduler?.scheduleAlarm(for: alarm)
@@ -87,15 +95,15 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     }
                 }
             }
+
+            try? modelContext?.save()
         }
     }
 
     func removeGeofence(for alarm: GeoAlarm) {
-        for region in locationManager.monitoredRegions {
-            if region.identifier == alarm.id.uuidString {
-                locationManager.stopMonitoring(for: region)
-                break
-            }
+        for region in locationManager.monitoredRegions where region.identifier == alarm.id.uuidString {
+            locationManager.stopMonitoring(for: region)
+            break
         }
     }
 
@@ -139,6 +147,8 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
             if alarm.enabled {
                 if isNowInside && !wasInside {
+                    // Enter transition — schedule
+                    notificationManager?.scheduleUpcomingNotification(for: alarm)
                     Task {
                         do {
                             try await alarmScheduler?.scheduleAlarm(for: alarm)
@@ -146,8 +156,20 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                             print("Failed to schedule alarm on enter: \(error)")
                         }
                     }
+                } else if isNowInside && wasInside {
+                    // Still inside (e.g. app restart) — ensure alarm is scheduled
+                    notificationManager?.scheduleUpcomingNotification(for: alarm)
+                    Task {
+                        do {
+                            try await alarmScheduler?.scheduleAlarm(for: alarm)
+                        } catch {
+                            print("Failed to schedule alarm on still-inside: \(error)")
+                        }
+                    }
                 } else if !isNowInside && wasInside {
+                    // Exit transition — cancel
                     alarmScheduler?.cancelAlarm(for: alarm)
+                    notificationManager?.cancelUpcomingNotification(for: alarm)
                 }
             }
         }
@@ -159,6 +181,7 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             alarm.enabled = false
             removeGeofence(for: alarm)
             alarmScheduler?.cancelAlarm(for: alarm)
+            notificationManager?.cancelUpcomingNotification(for: alarm)
         }
         try? modelContext?.save()
     }
@@ -179,15 +202,13 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             if !(alarmScheduler?.isAuthorized ?? false) {
                 await alarmScheduler?.requestAuthorization()
             }
-            if alarm.isInsideGeofence {
-                try? await alarmScheduler?.scheduleAlarm(for: alarm)
-            }
         }
     }
 
     func handleAlarmDisabled(_ alarm: GeoAlarm) {
         removeGeofence(for: alarm)
         alarmScheduler?.cancelAlarm(for: alarm)
+        notificationManager?.cancelUpcomingNotification(for: alarm)
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -216,10 +237,10 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         guard let modelContext, let alarmScheduler else { return }
+        guard let uuid = UUID(uuidString: region.identifier) else { return }
 
-        let alarmId = region.identifier
         let descriptor = FetchDescriptor<GeoAlarm>(
-            predicate: #Predicate { $0.id.uuidString == alarmId }
+            predicate: #Predicate { $0.id == uuid }
         )
 
         guard let alarm = try? modelContext.fetch(descriptor).first else { return }
@@ -228,6 +249,7 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         try? modelContext.save()
 
         if alarm.enabled {
+            notificationManager?.scheduleUpcomingNotification(for: alarm)
             Task {
                 try? await alarmScheduler.scheduleAlarm(for: alarm)
             }
@@ -236,10 +258,10 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let modelContext, let alarmScheduler else { return }
+        guard let uuid = UUID(uuidString: region.identifier) else { return }
 
-        let alarmId = region.identifier
         let descriptor = FetchDescriptor<GeoAlarm>(
-            predicate: #Predicate { $0.id.uuidString == alarmId }
+            predicate: #Predicate { $0.id == uuid }
         )
 
         guard let alarm = try? modelContext.fetch(descriptor).first else { return }
@@ -248,5 +270,6 @@ class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         try? modelContext.save()
 
         alarmScheduler.cancelAlarm(for: alarm)
+        notificationManager?.cancelUpcomingNotification(for: alarm)
     }
 }
