@@ -65,6 +65,8 @@ jobs:
           xcodebuild -scheme Geoclock
           -destination 'platform=iOS Simulator,name=${{ matrix.device }}'
           -only-testing:GeoclockTests
+          -enableCodeCoverage YES
+          -resultBundlePath result.xcresult
           test
 
       - name: Re-boot simulator for UI tests
@@ -89,3 +91,42 @@ jobs:
           -only-testing:GeoclockUITests/GeoclockUITests
           -parallel-testing-enabled NO
           test
+
+      - name: Export coverage to lcov
+        if: matrix.device == 'iPhone 17 Pro'
+        run: |
+          python3 - result.xcresult "$(pwd)" <<'PYEOF'
+          import json, subprocess, sys
+
+          xcresult, cwd = sys.argv[1], sys.argv[2].rstrip('/') + '/'
+
+          data = json.loads(subprocess.run(
+              ['xcrun', 'xccov', 'view', '--archive', xcresult, '--json'],
+              capture_output=True, text=True, check=True
+          ).stdout)
+
+          lcov = []
+          for path, lines in data.items():
+              if not path.endswith('.swift') or 'Tests' in path:
+                  continue
+              lcov.append('SF:' + path.replace(cwd, ''))
+              covered = executable = 0
+              for entry in lines:
+                  if not entry.get('isExecutable'):
+                      continue
+                  count = entry.get('executionCount', 0)
+                  lcov.append(f'DA:{entry["line"]},{count}')
+                  executable += 1
+                  covered += count > 0
+              lcov += [f'LF:{executable}', f'LH:{covered}', 'end_of_record']
+
+          open('coverage.lcov', 'w').write('\n'.join(lcov) + '\n')
+          print(f"Wrote {sum(1 for l in lcov if l.startswith('SF:'))} files to coverage.lcov")
+          PYEOF
+
+      - name: Upload to Coveralls
+        if: matrix.device == 'iPhone 17 Pro'
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage.lcov
+          format: lcov
