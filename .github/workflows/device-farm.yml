@@ -1,0 +1,153 @@
+name: Device Farm
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  real-device-test:
+    runs-on: macos-26
+    name: AlarmKit (Device Farm)
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-devicefarm-${{ runner.os }}-${{ hashFiles('Geoclock.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            deriveddata-devicefarm-${{ runner.os }}-
+
+      - name: Build for testing (iphoneos)
+        run: >
+          xcodebuild build-for-testing
+          -scheme Geoclock
+          -sdk iphoneos
+          -destination 'generic/platform=iOS'
+          -derivedDataPath build
+          CODE_SIGN_IDENTITY="-"
+          CODE_SIGNING_REQUIRED=NO
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: Package app .ipa
+        run: |
+          APP_PATH=$(find build -name "*.app" -path "*/Debug-iphoneos/*" ! -path "*Runner*" | head -1)
+          echo "Found app: $APP_PATH"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r app.ipa Payload
+          rm -rf Payload
+
+      - name: Package test bundle
+        run: |
+          XCTEST_PATH=$(find build -name "GeoclockTests.xctest" -type d | head -1)
+          echo "Found xctest bundle: $XCTEST_PATH"
+          cp -r "$XCTEST_PATH" GeoclockTests.xctest
+          zip -r tests.zip GeoclockTests.xctest
+          rm -rf GeoclockTests.xctest
+          echo "=== Zip contents ==="
+          zipinfo tests.zip | head -15
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Upload app to Device Farm
+        id: upload-app
+        run: |
+          UPLOAD=$(aws devicefarm create-upload \
+            --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
+            --name app.ipa \
+            --type IOS_APP \
+            --output json)
+          echo "upload_arn=$(echo "$UPLOAD" | jq -r '.upload.arn')" >> "$GITHUB_OUTPUT"
+          UPLOAD_URL=$(echo "$UPLOAD" | jq -r '.upload.url')
+          curl -T app.ipa "$UPLOAD_URL"
+
+          # Wait for upload to succeed
+          for i in $(seq 1 30); do
+            STATUS=$(aws devicefarm get-upload --arn "$(echo "$UPLOAD" | jq -r '.upload.arn')" --query 'upload.status' --output text)
+            echo "App upload status: $STATUS"
+            if [ "$STATUS" = "SUCCEEDED" ]; then break; fi
+            if [ "$STATUS" = "FAILED" ]; then echo "Upload failed"; exit 1; fi
+            sleep 5
+          done
+
+      - name: Upload tests to Device Farm
+        id: upload-tests
+        run: |
+          UPLOAD=$(aws devicefarm create-upload \
+            --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
+            --name tests.zip \
+            --type XCTEST_TEST_PACKAGE \
+            --output json)
+          echo "upload_arn=$(echo "$UPLOAD" | jq -r '.upload.arn')" >> "$GITHUB_OUTPUT"
+          UPLOAD_URL=$(echo "$UPLOAD" | jq -r '.upload.url')
+          curl -T tests.zip "$UPLOAD_URL"
+
+          # Wait for upload to succeed
+          UPLOAD_ARN=$(echo "$UPLOAD" | jq -r '.upload.arn')
+          for i in $(seq 1 30); do
+            UPLOAD_STATUS=$(aws devicefarm get-upload --arn "$UPLOAD_ARN" --output json)
+            STATUS=$(echo "$UPLOAD_STATUS" | jq -r '.upload.status')
+            echo "Test upload status: $STATUS"
+            if [ "$STATUS" = "SUCCEEDED" ]; then break; fi
+            if [ "$STATUS" = "FAILED" ]; then
+              echo "Upload failed. Details:"
+              echo "$UPLOAD_STATUS" | jq '.upload | {status, message, metadata}'
+              exit 1
+            fi
+            sleep 5
+          done
+
+      - name: Schedule Device Farm run
+        id: schedule-run
+        run: |
+          RUN=$(aws devicefarm schedule-run \
+            --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
+            --app-arn "${{ steps.upload-app.outputs.upload_arn }}" \
+            --device-pool-arn "${{ secrets.AWS_DEVICE_FARM_DEVICE_POOL_ARN }}" \
+            --name "CI-${GITHUB_SHA::8}" \
+            --test type=XCTEST,testPackageArn="${{ steps.upload-tests.outputs.upload_arn }}" \
+            --execution-configuration jobTimeoutMinutes=10 \
+            --output json)
+          echo "run_arn=$(echo "$RUN" | jq -r '.run.arn')" >> "$GITHUB_OUTPUT"
+          echo "Scheduled run: $(echo "$RUN" | jq -r '.run.arn')"
+
+      - name: Wait for Device Farm run
+        run: |
+          RUN_ARN="${{ steps.schedule-run.outputs.run_arn }}"
+          echo "Waiting for run: $RUN_ARN"
+
+          while true; do
+            RESULT=$(aws devicefarm get-run --arn "$RUN_ARN" --output json)
+            STATUS=$(echo "$RESULT" | jq -r '.run.status')
+            RUN_RESULT=$(echo "$RESULT" | jq -r '.run.result')
+            echo "Status: $STATUS | Result: $RUN_RESULT"
+
+            if [ "$STATUS" = "COMPLETED" ]; then
+              COUNTERS=$(echo "$RESULT" | jq '.run.counters')
+              echo "Test counters:"
+              echo "$COUNTERS" | jq .
+
+              if [ "$RUN_RESULT" != "PASSED" ]; then
+                echo "::error::Device Farm run result: $RUN_RESULT"
+                exit 1
+              fi
+              echo "All tests passed on real device"
+              break
+            fi
+
+            sleep 30
+          done
