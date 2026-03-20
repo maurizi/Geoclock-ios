@@ -221,9 +221,19 @@ struct GeoAlarmTests {
 
     // AlarmKit throws Code=1 on the simulator — these tests verify behavior on real devices only.
 
-    #if !targetEnvironment(simulator)
-    @Test
-    func alarmKit_scheduleAndCancel() async throws {
+}
+
+// MARK: - AlarmKit integration (XCTest wrapper for Device Farm compatibility)
+
+// AlarmKit throws Code=1 on the simulator — these tests run on real devices only.
+// Uses XCTestCase instead of Swift Testing @Test so Device Farm can discover them.
+
+#if !targetEnvironment(simulator)
+import XCTest
+
+final class AlarmKitTests: XCTestCase {
+    @MainActor
+    func testAlarmKit_scheduleAndCancel() async throws {
         let alarmId = UUID()
 
         let presentation = AlarmPresentation(
@@ -252,12 +262,12 @@ struct GeoAlarmTests {
         )
 
         let alarm = try await AlarmManager.shared.schedule(id: alarmId, configuration: config)
-        #expect(alarm.state == .scheduled)
+        XCTAssertEqual(alarm.state, .scheduled)
 
         let alarms = try AlarmManager.shared.alarms
-        #expect(alarms.contains { $0.id == alarmId })
+        XCTAssertTrue(alarms.contains { $0.id == alarmId })
 
         try AlarmManager.shared.cancel(id: alarmId)
     }
-    #endif
 }
+#endif
