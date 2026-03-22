@@ -27,7 +27,9 @@ class AlarmScheduler: ObservableObject, AlarmScheduling {
 
         let presentation = AlarmPresentation(
             alert: AlarmPresentation.Alert(
-                title: LocalizedStringResource(stringLiteral: alarm.displayName)
+                title: LocalizedStringResource(stringLiteral: alarm.displayName),
+                secondaryButton: AlarmButton(text: "Snooze", textColor: .blue, systemImageName: "zzz"),
+                secondaryButtonBehavior: .countdown
             )
         )
 
@@ -63,7 +65,8 @@ class AlarmScheduler: ObservableObject, AlarmScheduling {
             schedule = .fixed(nextFireDate)
         }
 
-        let config = AlarmManager.AlarmConfiguration.alarm(
+        let config: AlarmManager.AlarmConfiguration<GeoAlarmMetadata> = .init(
+            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 5 * 60),
             schedule: schedule,
             attributes: attributes,
             sound: sound
