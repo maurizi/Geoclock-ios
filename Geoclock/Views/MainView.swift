@@ -22,6 +22,10 @@ struct MainView: View {
         alarms.filter { !$0.isInsideGeofence }
     }
 
+    private var isLocationPending: Bool {
+        geofenceManager.userLocation == nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             mapSection
@@ -130,6 +134,14 @@ struct MainView: View {
             }
         }
         .frame(height: 120)
+        .overlay {
+            if isLocationPending {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
+            }
+        }
         .onChange(of: alarms.map(\.id)) { _, _ in
             mapCameraPosition = fittedMapPosition
         }
@@ -147,6 +159,13 @@ struct MainView: View {
         Group {
             if alarms.isEmpty {
                 emptyState
+            } else if isLocationPending {
+                List {
+                    ForEach(alarms, id: \.id) { alarm in
+                        alarmRow(alarm)
+                    }
+                }
+                .listStyle(.insetGrouped)
             } else {
                 List {
                     if !alarmsInRange.isEmpty {
